@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Patient Records — Easy Entry</title>
+  <link rel="manifest" href="./manifest.json" />  <!-- Relative path for subpaths -->
+
+  <style>
+    :root{
+      --bg:#f6f8fb; --card:#ffffff; --accent:#0b63ff; --muted:#6b7280;
+      --success:#16a34a; --danger:#ef4444; --radius:12px;
+    }
+
+    /* DEBUG + offline-safety: force-enable inputs and show SW status */
+    #swDebug{position:fixed;left:8px;top:72px;z-index:9999;background:#fff;border:1px solid #ddd;padding:6px 8px;border-radius:8px;font-size:12px;color:#111}
+
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;margin:18px;background:var(--bg);color:#111}
+    .wrap{max-width:980px;margin:18px auto;padding:18px}
+    header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+    header h1{font-size:20px;margin:0}
+    .card{background:var(--card);border-radius:var(--radius);padding:14px;box-shadow:0 6px 18px rgba(15,23,42,0.06)}
+    .form-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    .form-grid .full{grid-column:1/-1}
+    label{display:block;font-weight:600;margin-bottom:6px;color:#111;font-size:13px}
+    input,select{width:100%;padding:9px;border:1px solid #e6e9ef;border-radius:8px;box-sizing:border-box;font-size:14px}
+    .row{display:flex;gap:10px}
+    .row .half{flex:1}
+    .buttons{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+    button{background:var(--accent);color:white;padding:10px 12px;border-radius:10px;border:0;font-weight:600;cursor:pointer}
+    button.secondary{background:transparent;color:var(--accent);border:1px solid rgba(11,99,255,0.12)}
+    button.danger{background:var(--danger)}
+    .hint{font-size:13px;color:var(--muted);margin-top:8px}
+    table{width:100%;border-collapse:collapse;margin-top:14px;font-size:14px}
+    th,td{padding:8px;border-bottom:1px solid #eef2f6;text-align:left}
+    th{background:transparent;color:var(--muted);font-weight:700}
+    .small{font-size:13px;color:var(--muted)}
+    .actions button{margin-right:6px;padding:6px 8px;font-size:13px;border-radius:8px}
+    footer{margin-top:14px;text-align:center;color:var(--muted);font-size:13px}
+    /* Install prompt button */
+    #pwaInstallBtn{position:fixed;right:18px;bottom:18px;padding:10px 14px;border-radius:10px;background:#0b63ff;color:#fff;border:none;z-index:9999}
+    /* Force SW register button (small debug) */
+    #forceSwBtn{position:fixed;left:12px;bottom:18px;padding:8px 12px;border-radius:8px;z-index:9999;background:#222;color:#fff;border:0}
+  </style>
+
+</head>
+<body>
+  <div id="swDebug" aria-hidden="true">SW status: initializing…</div>
+
+  <div class="wrap">
+    <header>
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36'%3E%3Crect rx='8' width='36' height='36' fill='%230b63ff'/%3E%3Cpath d='M9 20h18v2H9z' fill='%23fff'/%3E%3Cpath d='M9 13h18v2H9z' fill='%23fff'/%3E%3Cpath d='M9 6h18v2H9z' fill='%23fff'/%3E%3C/svg%3E" alt="" />
+      <h1>Patient Data — Quick Entry</h1>
+    </header>
+
+    <div class="card" id="entryCard">
+      <div class="form-grid">
+        <div class="full">
+          <label for="date">Date</label>
+          <input id="date" name="date" type="date" />
+          <label for="patient_name" class="sr-only">Patient</label>
+          <input id="patient_name" name="patient_name" placeholder="Full name" />
+          <label for="hospital" class="sr-only">Hospital</label>
+          <input id="hospital" name="hospital" placeholder="Hospital name" />
+          <label for="type">Type</label>
+          <select id="type" name="type">
+            <option value="OPD">OPD</option>
+            <option value="IPD">IPD</option>
+            <option value="Operation">Operation/Hospitalization</option>
+          </select>
+          <label for="procedure_name">Name of procedure</label>
+          <input id="procedure_name" name="procedure_name" placeholder="Name of procedure" />
+          <label for="fees">Fees</label>
+          <input id="fees" name="fees" type="number" step="0.01" placeholder="0.00" />
+          <label for="other_expenses">Other expenses due</label>
+          <input id="other_expenses" name="other_expenses" type="number" step="0.01" placeholder="0.00" />
+          <label for="other_payee">To whom other expenses to be paid</label>
+          <input id="other_payee" name="other_payee" placeholder="Party or person" />
+        </div>
+      </div>
+
+      <div class="buttons">
+        <button id="saveBtn">Save record</button>
+        <button class="secondary" id="exportCsvBtn" type="button">Export CSV (Excel)</button>
+        <button class="secondary" id="clearLocalBtn" type="button">Clear All Records</button>
+      </div>
+
+      <div class="hint">Tip: On Android, open in Chrome, then choose menu → Add to Home screen. Open once online to complete caching. The app works fully offline, storing everything on your device.</div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h3 style="margin:0 0 8px 0">All records (stored on device)</h3>
+      <table id="tbl">
+        <thead><tr><th>ID</th><th>Date</th><th>Patient</th><th>Hospital</th><th>Type</th><th>Procedure</th><th style="text-align:right">Fees</th><th style="text-align:right">Other</th><th>Payee</th><th>Action</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="small">All data is stored locally on your device. Export to CSV to back it up or share.</div>
+    </div>
+
+    <footer class="small">If you want password protection, tell me and I will add it.</footer>
+  </div>
+
+<button id="forceSwBtn">Force SW register</button>
+
+<script>
+/* ====== Config ====== */
+const LOCAL_RECORDS_KEY = 'patient_records_v1'; // Changed from queue to persistent records
+
+/* ====== Utilities ====== */
+const qs = id => document.getElementById(id);
+function escapeHtml(unsafe) {
+  return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+function renderTableRows(rows) {
+  const tbody = qs('tbl').querySelector('tbody');
+  tbody.innerHTML = '';
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r.id}</td>
+      <td>${r.date || ''}</td>
+      <td>${escapeHtml(r.patient_name)}</td>
+      <td>${escapeHtml(r.hospital)}</td>
+      <td>${escapeHtml(r.type)}</td>
+      <td>${escapeHtml(r.procedure_name)}</td>
+      <td style="text-align:right">${r.fees ? r.fees.toFixed(2) : ''}</td>
+      <td style="text-align:right">${r.other_expenses ? r.other_expenses.toFixed(2) : ''}</td>
+      <td>${escapeHtml(r.other_payee)}</td>
+      <td class="actions"><button class="danger" onclick="removeItem(${r.id})">Delete</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function readLocalRecords() {
+  try {
+    const data = localStorage.getItem(LOCAL_RECORDS_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch (e) {
+    console.error('Error reading local records:', e);
+    return [];
+  }
+}
+
+function writeLocalRecords(records) {
+  try {
+    localStorage.setItem(LOCAL_RECORDS_KEY, JSON.stringify(records));
+  } catch (e) {
+    console.error('Error writing local records:', e);
+    alert('Error saving to device storage. Check browser settings.');
+  }
+}
+
+function addLocalRecord(rec) {
+  const records = readLocalRecords();
+  records.push(rec);
+  writeLocalRecords(records);
+}
+
+function clearForm() {
+  document.querySelectorAll('input, select').forEach(el => {
+    if (el.type === 'date') el.value = '';
+    else if (el.tagName === 'SELECT') el.selectedIndex = 0;
+    else el.value = '';
+  });
+}
+
+function updateSwDebug() {
+  let s = navigator.onLine ? 'online' : 'offline';
+  s += ' — ' + (navigator.serviceWorker.controller ? 'controller present' : 'no controller');
+  if ('caches' in window) {
+    caches.keys().then(keys => {
+      qs('swDebug').textContent = 'SW status: ' + s + ' — caches: ' + (keys.length ? keys.join(', ') : 'no Cache API');
+    });
+  } else {
+    qs('swDebug').textContent = 'SW status: ' + s + ' — caches: no Cache API';
+  }
+  // Force-enable inputs even if SW fails (for testing)
+  document.querySelectorAll('input, select').forEach(el => el.disabled = false);
+}
+
+/* ====== Data Ops ====== */
+function load() {
+  const records = readLocalRecords();
+  renderTableRows(records);
+}
+
+function saveRecord() {
+  const rec = {
+    id: Date.now(),
+    date: qs('date').value,
+    patient_name: qs('patient_name').value.trim(),
+    hospital: qs('hospital').value.trim(),
+    type: qs('type').value,
+    procedure_name: qs('procedure_name').value.trim(),
+    fees: qs('fees').value ? Number(qs('fees').value) : '',
+    other_expenses: qs('other_expenses').value ? Number(qs('other_expenses').value) : '',
+    other_payee: qs('other_payee').value.trim()
+  };
+
+  addLocalRecord(rec);
+  alert('Saved to device.');
+  clearForm();
+  load();
+}
+
+function removeItem(id) {
+  let records = readLocalRecords();
+  records = records.filter(r => r.id !== id);
+  writeLocalRecords(records);
+  load();
+}
+
+async function exportCsv() {
+  const rows = readLocalRecords();
+  if (!rows.length) { alert('No records to export'); return; }
+  const header = ['id','date','patient_name','hospital','type','procedure_name','fees','other_expenses','other_payee'];
+  const lines = [header.join(',')];
+  rows.forEach(r => {
+    const vals = header.map(h => {
+      const v = r[h] === undefined || r[h] === null ? '' : String(r[h]);
+      return `"${v.replace(/"/g,'""')}"`;
+    });
+    lines.push(vals.join(','));
+  });
+  const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'patient_export.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function clearLocalRecords() {
+  if (!confirm('This will remove all records from your device. Continue?')) return;
+  writeLocalRecords([]);
+  load();
+  alert('All records cleared.');
+}
+
+/* ====== Events ====== */
+qs('saveBtn').addEventListener('click', saveRecord);
+qs('exportCsvBtn').addEventListener('click', exportCsv);
+qs('clearLocalBtn').addEventListener('click', clearLocalRecords);
+
+window.addEventListener('load', () => { load(); updateSwDebug(); });
+
+/* ====== PWA install handling ====== */
+let deferredInstallPrompt;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  if (!document.getElementById('pwaInstallBtn')) {
+    const b = document.createElement('button');
+    b.id = 'pwaInstallBtn';
+    b.textContent = 'Install app';
+    document.body.appendChild(b);
+    b.onclick = async () => {
+      deferredInstallPrompt.prompt();
+      const choice = await deferredInstallPrompt.userChoice;
+      console.log('PWA install choice', choice);
+      b.remove();
+    };
+  }
+});
+
+/* ====== Force SW register debug button ====== */
+document.getElementById('forceSwBtn').addEventListener('click', async () => {
+  if (!('serviceWorker' in navigator)) { alert('Service workers not supported here'); return; }
+  try {
+    const reg = await navigator.serviceWorker.register('./sw.js');  // Relative path
+    alert('Service worker registered for scope: ' + reg.scope);
+  } catch (err) {
+    alert('SW register failed: ' + (err && err.message ? err.message : String(err)));
+  }
+});
+</script>
+</body>
+</html>
